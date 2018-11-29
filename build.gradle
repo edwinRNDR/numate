@@ -1,0 +1,27 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '1.3.10'
+}
+
+group 'org.openrndr.numate'
+version '0.3.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    maven {
+        url="https://dl.bintray.com/openrndr/openrndr"
+    }
+}
+
+ext.openrndrVersion = "0.3.30"
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    compile "org.openrndr:openrndr-core:$openrndrVersion"
+
+}
+
+compileKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+compileTestKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
