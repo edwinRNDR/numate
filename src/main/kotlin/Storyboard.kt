@@ -49,8 +49,8 @@ class Key<T : Any>(
 }
 
 class Storyboard {
-    val keys: MutableList<Key<Any>> = mutableListOf()
-    var cursor = System.currentTimeMillis()
+    private val keys: MutableList<Key<Any>> = mutableListOf()
+    private var cursor = System.currentTimeMillis()
 
     /**
      * is storyboard finished
@@ -91,49 +91,81 @@ class Storyboard {
         }
     }
 
+    /**
+     * DSL
+     */
     infix fun <T : Any> KMutableProperty0<T>.to(r: KMutableProperty0<T>): Key<T> {
         return Key(SubjectProperty(this), TargetProperty(r), cursor)
     }
 
+    /**
+     * DSL
+     */
     infix fun KMutableProperty0<Double>.to(f: (() -> Double)): Key<Double> {
         return Key(SubjectProperty(this), TargetFunction(f), cursor)
     }
 
+    /**
+     * DSL
+     */
     infix fun <T : Any> KMutableProperty0<T>.to(v: T): Key<T> {
         return Key(SubjectProperty(this), TargetValue(v), cursor)
     }
+
+    /**
+     * DSL
+     */
 
     infix fun <T: Any> ValueReference<T>.to(v : T) : Key<T> {
         return Key(SubjectValueReference(this), TargetValue(v), cursor)
     }
 
+    /**
+     * DSL. set time of animation
+     */
     infix fun <T : Any> Key<T>.during(s: Double): Key<T> {
         this.duration = s
         keys.add(this as Key<Any>)
         return this
     }
 
+    /**
+     * DSL. set easing of animation
+     */
     infix fun <T : Any> Key<T>.eased(easer: (Double) -> Double): Key<T> {
         this.easer = easer
         keys.add(this as Key<Any>)
         return this
     }
 
+    /**
+     * DSL. add function to execute after animation is completed
+     */
     infix fun <T : Any> Key<T>.then(f: () -> Unit) {
         this.complete = f
     }
 
+    /**
+     * DSL. move cursor to current time
+     */
     val now: Unit
         get() {
             cursor = System.currentTimeMillis()
         }
 
+    /**
+     * DSL. wait for previously queued animation to complete
+     */
     val complete: Unit
         get() {
             keys.lastOrNull()?.let {
                 cursor = it.start + (it.duration * 1000).toLong()
             }
         }
+
+    fun cancel() {
+        finished = true
+    }
 }
 
 /*
