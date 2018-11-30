@@ -1,7 +1,5 @@
-import io.lacuna.artifex.Vec
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+package org.openrndr.numate
+
 import kotlinx.coroutines.yield
 import org.openrndr.Program
 import org.openrndr.color.ColorHSVa
@@ -11,19 +9,39 @@ import org.openrndr.launch
 import org.openrndr.math.*
 import kotlin.reflect.KMutableProperty0
 
+class ValueReference<T>(val set: (T) -> Unit, val get: () -> T)
+
+sealed class Subject<T> {
+    abstract fun set(v: T)
+    abstract fun get(): T
+}
+
+private class SubjectProperty<T>(val property: KMutableProperty0<T>) : Subject<T>() {
+    override fun set(v: T) = property.set(v)
+    override fun get(): T = property.get()
+}
+
+private class SubjectValueReference<T>(val valueReference: ValueReference<T>) : Subject<T>() {
+    override fun set(v: T) {
+        valueReference.set(v)
+    }
+    override fun get(): T = valueReference.get()
+}
+
 sealed class KeyTarget<T>
 class TargetValue<T>(val value: T) : KeyTarget<T>()
 class TargetProperty<T>(val property: KMutableProperty0<T>) : KeyTarget<T>()
 class TargetFunction<T>(val function: () -> T) : KeyTarget<T>()
 
 class Key<T : Any>(
-    val prop: KMutableProperty0<T>,
+    val subject: Subject<T>,
     var target: KeyTarget<T>,
     var start: Long,
-    var duration: Double = 0.0
+    var duration: Double = 0.0,
+    var easer: (Double) -> Double = ::noEase
 
 ) {
-    var complete: (()->Unit)? = null
+    var complete: (() -> Unit)? = null
     var startValue: T? = null
     var targetValue: T? = null
     var started = false
@@ -33,15 +51,19 @@ class Key<T : Any>(
 class Storyboard {
     val keys: MutableList<Key<Any>> = mutableListOf()
     var cursor = System.currentTimeMillis()
-    internal var finished = false
 
-    fun update() {
+    /**
+     * is storyboard finished
+     */
+    var finished = false
+
+    internal fun update() {
         cursor = System.currentTimeMillis()
 
         val toProcess = keys.filter { it.started || (it.start <= cursor && cursor < it.start + (it.duration * 1000L)) }
         toProcess.forEach {
             if (!it.started) {
-                it.startValue = it.prop.get()
+                it.startValue = it.subject.get()
                 it.targetValue = when (val target = it.target) {
                     is TargetValue -> target.value
                     is TargetProperty -> target.property.get()
@@ -49,42 +71,40 @@ class Storyboard {
                 }
                 it.started = true
             }
-            val dt = (((cursor - it.start) / 1000.0) / it.duration).coerceIn(0.0, 1.0)
+            val dt = it.easer((((cursor - it.start) / 1000.0) / it.duration).coerceIn(0.0, 1.0))
             when (val targetValue = it.targetValue) {
-                is ColorRGBa -> (it.prop).set(mix(it.startValue as ColorRGBa, targetValue, dt))
-                is ColorHSVa -> (it.prop).set(mix(it.startValue as ColorHSVa, targetValue, dt))
-                is Quaternion -> (it.prop).set(slerp(it.startValue as Quaternion, targetValue, dt))
-                is Vector3 -> (it.prop).set(it.startValue as Vector3 * (1.0 - dt) + targetValue * dt)
-                is Vector2 -> (it.prop).set(it.startValue as Vector2 * (1.0 - dt) + targetValue * dt)
-                is Double -> (it.prop).set(it.startValue as Double * (1.0 - dt) + targetValue * dt)
-                is Float -> (it.prop).set((it.startValue as Float * (1.0 - dt) + targetValue * dt).toFloat())
-                is Int -> (it.prop).set((it.startValue as Float * (1.0 - dt) + targetValue * dt).toInt())
-                is Long -> (it.prop).set((it.startValue as Float * (1.0 - dt) + targetValue * dt).toLong())
+                is ColorRGBa -> (it.subject).set(mix(it.startValue as ColorRGBa, targetValue, dt))
+                is ColorHSVa -> (it.subject).set(mix(it.startValue as ColorHSVa, targetValue, dt))
+                is Quaternion -> (it.subject).set(slerp(it.startValue as Quaternion, targetValue, dt))
+                is Vector3 -> (it.subject).set(it.startValue as Vector3 * (1.0 - dt) + targetValue * dt)
+                is Vector2 -> (it.subject).set(it.startValue as Vector2 * (1.0 - dt) + targetValue * dt)
+                is Double -> (it.subject).set(it.startValue as Double * (1.0 - dt) + targetValue * dt)
+                is Float -> (it.subject).set((it.startValue as Float * (1.0 - dt) + targetValue * dt).toFloat())
+                is Int -> (it.subject).set((it.startValue as Float * (1.0 - dt) + targetValue * dt).toInt())
+                is Long -> (it.subject).set((it.startValue as Float * (1.0 - dt) + targetValue * dt).toLong())
             }
             if (dt >= 1.0 && !it.finished) {
                 it.finished = true
                 it.complete?.invoke()
                 finished = keys.all { it.finished }
             }
-            //println("${it.prop} :: ${it.startValue} -> ${it.targetValue} -> ${it.prop.get()}")
         }
     }
 
     infix fun <T : Any> KMutableProperty0<T>.to(r: KMutableProperty0<T>): Key<T> {
-        return Key(this, TargetProperty(r), cursor)
+        return Key(SubjectProperty(this), TargetProperty(r), cursor)
     }
 
-    infix fun <T : Any> KMutableProperty0<T>.to(f: () -> T): Key<T> {
-        return Key(this, TargetFunction(f), cursor)
+    infix fun KMutableProperty0<Double>.to(f: (() -> Double)): Key<Double> {
+        return Key(SubjectProperty(this), TargetFunction(f), cursor)
     }
 
-
-    infix fun KMutableProperty0<Vector3>.to(r: Vector3): Key<Vector3> {
-        return Key(this, TargetValue(r), cursor)
+    infix fun <T : Any> KMutableProperty0<T>.to(v: T): Key<T> {
+        return Key(SubjectProperty(this), TargetValue(v), cursor)
     }
 
-    infix fun KMutableProperty0<Double>.to(r: Double): Key<Double> {
-        return Key(this, TargetValue(r), cursor)
+    infix fun <T: Any> ValueReference<T>.to(v : T) : Key<T> {
+        return Key(SubjectValueReference(this), TargetValue(v), cursor)
     }
 
     infix fun <T : Any> Key<T>.during(s: Double): Key<T> {
@@ -93,6 +113,11 @@ class Storyboard {
         return this
     }
 
+    infix fun <T : Any> Key<T>.eased(easer: (Double) -> Double): Key<T> {
+        this.easer = easer
+        keys.add(this as Key<Any>)
+        return this
+    }
 
     infix fun <T : Any> Key<T>.then(f: () -> Unit) {
         this.complete = f
@@ -111,7 +136,8 @@ class Storyboard {
         }
 }
 
-fun storyboard(builder: Storyboard.() -> Unit) : Storyboard {
+/*
+fun storyboard(builder: Storyboard.() -> Unit): Storyboard {
     val board = Storyboard()
     board.builder()
 
@@ -122,9 +148,12 @@ fun storyboard(builder: Storyboard.() -> Unit) : Storyboard {
         }
     }
     return board
-}
+}*/
 
-fun Program.storyboard(builder: Storyboard.() -> Unit) : Storyboard {
+/**
+ * builds and launches an animation storyboard
+ */
+fun Program.storyboard(builder: Storyboard.() -> Unit): Storyboard {
     val board = Storyboard()
     board.builder()
 
@@ -135,31 +164,4 @@ fun Program.storyboard(builder: Storyboard.() -> Unit) : Storyboard {
         }
     }
     return board
-}
-
-
-class A(var x: Double, var y: Double, var v: Vector3)
-
-fun main(args: Array<String>) {
-    val a = A(0.0, 0.0, Vector3(0.0, 0.0, 0.0))
-
-    storyboard {
-        now
-        a::v to Vector3.ONE during 4.0 then {
-            println("finished!")
-        }
-        a::x to 5.0 during 2.0 then {
-            println("finished! a::X")
-        }
-        complete
-        a::x to a::y during 4.0 then {
-            println("finished !!")
-        }
-        complete
-        a::x to { a.y + 1.0 } during 4.0 then {
-            println("done!")
-        }
-    }
-
-    Thread.sleep(16000)
 }
