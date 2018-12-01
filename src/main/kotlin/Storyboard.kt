@@ -57,6 +57,8 @@ class Storyboard {
      */
     var finished = false
 
+    var onFinished: (() -> Unit)? = null
+
     internal fun update() {
         cursor = System.currentTimeMillis()
 
@@ -76,6 +78,7 @@ class Storyboard {
                 is ColorRGBa -> (it.subject).set(mix(it.startValue as ColorRGBa, targetValue, dt))
                 is ColorHSVa -> (it.subject).set(mix(it.startValue as ColorHSVa, targetValue, dt))
                 is Quaternion -> (it.subject).set(slerp(it.startValue as Quaternion, targetValue, dt))
+                is Spherical -> (it.subject).set(it.startValue as Spherical * (1.0-dt) + targetValue * dt)
                 is Vector3 -> (it.subject).set(it.startValue as Vector3 * (1.0 - dt) + targetValue * dt)
                 is Vector2 -> (it.subject).set(it.startValue as Vector2 * (1.0 - dt) + targetValue * dt)
                 is Double -> (it.subject).set(it.startValue as Double * (1.0 - dt) + targetValue * dt)
@@ -86,7 +89,11 @@ class Storyboard {
             if (dt >= 1.0 && !it.finished) {
                 it.finished = true
                 it.complete?.invoke()
-                finished = keys.all { it.finished }
+                val finishedNow = keys.all { it.finished }
+                if (finishedNow && !finished) {
+                    finished = true
+                    onFinished?.invoke()
+                }
             }
         }
     }
@@ -101,7 +108,16 @@ class Storyboard {
     /**
      * DSL
      */
+    @JvmName("toDoubleFunction")
     infix fun KMutableProperty0<Double>.to(f: (() -> Double)): Key<Double> {
+        return Key(SubjectProperty(this), TargetFunction(f), cursor)
+    }
+
+    /**
+     * DSL
+     */
+    @JvmName("toVector3Function")
+    infix fun KMutableProperty0<Vector3>.to(f: (() -> Vector3)): Key<Vector3> {
         return Key(SubjectProperty(this), TargetFunction(f), cursor)
     }
 
@@ -166,6 +182,12 @@ class Storyboard {
     fun cancel() {
         finished = true
     }
+
+    internal fun clear() {
+        keys.clear()
+        finished = false
+    }
+
 }
 
 /*
@@ -185,7 +207,7 @@ fun storyboard(builder: Storyboard.() -> Unit): Storyboard {
 /**
  * builds and launches an animation storyboard
  */
-fun Program.storyboard(builder: Storyboard.() -> Unit): Storyboard {
+fun Program.storyboard(loop: Boolean = false, builder: Storyboard.() -> Unit): Storyboard {
     val board = Storyboard()
     board.builder()
 
@@ -193,6 +215,12 @@ fun Program.storyboard(builder: Storyboard.() -> Unit): Storyboard {
         while (!board.finished) {
             board.update()
             yield()
+        }
+    }
+    if (loop) {
+        board.onFinished = {
+            board.clear()
+            board.builder()
         }
     }
     return board
