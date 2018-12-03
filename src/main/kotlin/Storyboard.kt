@@ -1,12 +1,14 @@
 package org.openrndr.numate
 
-import kotlinx.coroutines.yield
+import kotlinx.coroutines.*
 import org.openrndr.Program
 import org.openrndr.color.ColorHSVa
 import org.openrndr.color.ColorRGBa
 import org.openrndr.color.mix
-import org.openrndr.launch
+
 import org.openrndr.math.*
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.reflect.KMutableProperty0
 
 class ValueReference<T>(val set: (T) -> Unit, val get: () -> T)
@@ -25,6 +27,7 @@ private class SubjectValueReference<T>(val valueReference: ValueReference<T>) : 
     override fun set(v: T) {
         valueReference.set(v)
     }
+
     override fun get(): T = valueReference.get()
 }
 
@@ -56,6 +59,7 @@ class Storyboard {
      * is storyboard finished
      */
     var finished = false
+        private set
 
     var onFinished: (() -> Unit)? = null
 
@@ -78,7 +82,7 @@ class Storyboard {
                 is ColorRGBa -> (it.subject).set(mix(it.startValue as ColorRGBa, targetValue, dt))
                 is ColorHSVa -> (it.subject).set(mix(it.startValue as ColorHSVa, targetValue, dt))
                 is Quaternion -> (it.subject).set(slerp(it.startValue as Quaternion, targetValue, dt))
-                is Spherical -> (it.subject).set(it.startValue as Spherical * (1.0-dt) + targetValue * dt)
+                is Spherical -> (it.subject).set(it.startValue as Spherical * (1.0 - dt) + targetValue * dt)
                 is Vector3 -> (it.subject).set(it.startValue as Vector3 * (1.0 - dt) + targetValue * dt)
                 is Vector2 -> (it.subject).set(it.startValue as Vector2 * (1.0 - dt) + targetValue * dt)
                 is Double -> (it.subject).set(it.startValue as Double * (1.0 - dt) + targetValue * dt)
@@ -132,7 +136,7 @@ class Storyboard {
      * DSL
      */
 
-    infix fun <T: Any> ValueReference<T>.to(v : T) : Key<T> {
+    infix fun <T : Any> ValueReference<T>.to(v: T): Key<T> {
         return Key(SubjectValueReference(this), TargetValue(v), cursor)
     }
 
@@ -190,28 +194,17 @@ class Storyboard {
 
 }
 
-/*
-fun storyboard(builder: Storyboard.() -> Unit): Storyboard {
+fun storyboard(
+    scope: CoroutineScope,
+    context: CoroutineContext,
+    dispatcher: CoroutineDispatcher,
+    loop: Boolean = false,
+    builder: Storyboard.() -> Unit
+): Storyboard {
     val board = Storyboard()
     board.builder()
 
-    GlobalScope.launch {
-        while (!board.finished) {
-            board.update()
-            delay(25)
-        }
-    }
-    return board
-}*/
-
-/**
- * builds and launches an animation storyboard
- */
-fun Program.storyboard(loop: Boolean = false, builder: Storyboard.() -> Unit): Storyboard {
-    val board = Storyboard()
-    board.builder()
-
-    launch {
+    scope.launch(context + dispatcher) {
         while (!board.finished) {
             board.update()
             yield()
@@ -224,4 +217,15 @@ fun Program.storyboard(loop: Boolean = false, builder: Storyboard.() -> Unit): S
         }
     }
     return board
+}
+
+/**
+ * builds and launches an animation storyboard
+ */
+fun Program.storyboard(loop: Boolean = false, builder: Storyboard.() -> Unit): Storyboard {
+    return storyboard(GlobalScope, EmptyCoroutineContext, dispatcher, loop, builder)
+}
+
+fun Program.storyboard(scope: CoroutineScope, loop: Boolean = false, builder: Storyboard.() -> Unit): Storyboard {
+    return storyboard(scope, EmptyCoroutineContext, dispatcher, loop, builder)
 }
