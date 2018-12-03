@@ -3,7 +3,9 @@ package org.openrndr.numate
 import kotlinx.coroutines.*
 import org.openrndr.Program
 
-class StoryboardContext(val scope: CoroutineScope, val dispatcher: CoroutineDispatcher) {
+class StoryboardContext(val scope: CoroutineScope,
+                        val dispatcher: CoroutineDispatcher,
+                        val clock: () -> Double) {
     private var context: Job = scope.launch(dispatcher) {
         while (true) {
             yield()
@@ -18,7 +20,7 @@ class StoryboardContext(val scope: CoroutineScope, val dispatcher: CoroutineDisp
                 }
             }
         }
-        return storyboard(scope, context, dispatcher, loop, init)
+        return storyboard(scope, context, dispatcher, clock, loop, init)
     }
 
     fun cancel() {
@@ -28,5 +30,5 @@ class StoryboardContext(val scope: CoroutineScope, val dispatcher: CoroutineDisp
 }
 
 fun Program.storyboardContext(): StoryboardContext {
-    return StoryboardContext(GlobalScope, dispatcher)
+    return StoryboardContext(GlobalScope, dispatcher, clock)
 }

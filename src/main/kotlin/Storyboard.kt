@@ -39,7 +39,7 @@ class TargetFunction<T>(val function: () -> T) : KeyTarget<T>()
 class Key<T : Any>(
     val subject: Subject<T>,
     var target: KeyTarget<T>,
-    var start: Long,
+    var start: Double,
     var duration: Double = 0.0,
     var easer: (Double) -> Double = ::noEase
 
@@ -51,9 +51,10 @@ class Key<T : Any>(
     var finished = false
 }
 
-class Storyboard {
+class Storyboard(val clock: () -> Double) {
     private val keys: MutableList<Key<Any>> = mutableListOf()
-    private var cursor = System.currentTimeMillis()
+    var cursor = clock()
+        private set
 
     /**
      * is storyboard finished
@@ -64,9 +65,9 @@ class Storyboard {
     var onFinished: (() -> Unit)? = null
 
     internal fun update() {
-        cursor = System.currentTimeMillis()
+        cursor = clock()
 
-        val toProcess = keys.filter { it.started || (it.start <= cursor && cursor < it.start + (it.duration * 1000L)) }
+        val toProcess = keys.filter { it.started || (it.start <= cursor && cursor < it.start + (it.duration)) }
         toProcess.forEach {
             if (!it.started) {
                 it.startValue = it.subject.get()
@@ -77,7 +78,7 @@ class Storyboard {
                 }
                 it.started = true
             }
-            val dt = it.easer((((cursor - it.start) / 1000.0) / it.duration).coerceIn(0.0, 1.0))
+            val dt = it.easer((((cursor - it.start)) / it.duration).coerceIn(0.0, 1.0))
             when (val targetValue = it.targetValue) {
                 is ColorRGBa -> (it.subject).set(mix(it.startValue as ColorRGBa, targetValue, dt))
                 is ColorHSVa -> (it.subject).set(mix(it.startValue as ColorHSVa, targetValue, dt))
@@ -95,6 +96,7 @@ class Storyboard {
                 it.complete?.invoke()
                 val finishedNow = keys.all { it.finished }
                 if (finishedNow && !finished) {
+                    cursor = it.start + it.duration
                     finished = true
                     onFinished?.invoke()
                 }
@@ -170,7 +172,7 @@ class Storyboard {
      */
     val now: Unit
         get() {
-            cursor = System.currentTimeMillis()
+            cursor = clock()
         }
 
     /**
@@ -179,7 +181,7 @@ class Storyboard {
     val complete: Unit
         get() {
             keys.lastOrNull()?.let {
-                cursor = it.start + (it.duration * 1000).toLong()
+                cursor = it.start + (it.duration).toLong()
             }
         }
 
@@ -198,10 +200,11 @@ fun storyboard(
     scope: CoroutineScope,
     context: CoroutineContext,
     dispatcher: CoroutineDispatcher,
+    clock: () -> Double,
     loop: Boolean = false,
     builder: Storyboard.() -> Unit
 ): Storyboard {
-    val board = Storyboard()
+    val board = Storyboard(clock)
     board.builder()
 
     scope.launch(context + dispatcher) {
@@ -223,9 +226,9 @@ fun storyboard(
  * builds and launches an animation storyboard
  */
 fun Program.storyboard(loop: Boolean = false, builder: Storyboard.() -> Unit): Storyboard {
-    return storyboard(GlobalScope, EmptyCoroutineContext, dispatcher, loop, builder)
+    return storyboard(GlobalScope, EmptyCoroutineContext, dispatcher, clock, loop, builder)
 }
 
 fun Program.storyboard(scope: CoroutineScope, loop: Boolean = false, builder: Storyboard.() -> Unit): Storyboard {
-    return storyboard(scope, EmptyCoroutineContext, dispatcher, loop, builder)
+    return storyboard(scope, EmptyCoroutineContext, dispatcher, clock, loop, builder)
 }
