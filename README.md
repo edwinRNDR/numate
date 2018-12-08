@@ -44,3 +44,23 @@ storyboard {
     }
 }
 ```
+
+## Try it out
+
+Numate is work-in-progress and its API is potentially subject to change. However, the animator
+is fully functional and can be tried out if you are interested.
+
+The easiest way to add Numate to your project is by adding the following
+repository and dependencies to your `build.gradle`
+
+```groovy
+repositories {
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.edwinRNDR:numate:33598c74c5'
+}
+```
+
+[![](https://jitpack.io/v/edwinRNDR/numate.svg)](https://jitpack.io/#edwinRNDR/numate)
