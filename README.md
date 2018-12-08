@@ -1,10 +1,17 @@
 # numate
 
 Proof-of-concept implementation for a reflection-free Kotlin/OPENRNDR animation library. The aim for this work is to
-provide a replacement for the `openrndr-animatable` library.
+provide a simple library for interactive animations.
 
-## Usage
+Numate (codename) relies on Kotlin (1.3) coroutines for its animation update cycles.
 
+## Storyboard
+
+The `Storyboard` class is Numate's primary building block. It is used to declare animations on _property references_.
+
+A `Storyboard` is best made using the `Program.storyboard` extension method, which sets up the `Storyboard` to use the frame-bound coroutine dispatcher of `Program` and uses `Program`'s `clock` function.
+
+#### Example Usage
 ```kotlin
 
 // -- a basic class
@@ -44,6 +51,27 @@ storyboard {
     }
 }
 ```
+
+
+### Looping animations
+
+Storyboards can be constructed to loop forever like this.
+
+```!kotlin
+application {
+    program {
+        val a = object { var x: Double = 0.0; var y: Double = 0.0 }
+        storyboard(loop = true) {
+            a::x to (Math.random() * width) during 2.0 eased inOutQuad
+            a::y to (Math.random() * height) during 2.0 eased inOutQuad
+        }
+        extend {
+            drawer.circle(a.x, a.y, 50.0)
+        }
+    }
+}
+```
+What is interesting here is that the _behaviour_ of the animation is looping, the actual animation is different at every cycle.
 
 ## Try it out
 
